@@ -6805,7 +6805,11 @@ setInterval(fetchSniffHistory, POLL_MS * 4);
 setInterval(tickAge, 1000);
 setInterval(() => ensureDadabase(false), DADABASE_TTL_MS);
 setInterval(() => renderDadabase(), 60000);
-setInterval(() => fetchWebAqi(lastData ? (hasLocationFix(lastData) ? num(lastData.lat) : CAPE_LAT) : CAPE_LAT, lastData ? (hasLocationFix(lastData) ? num(lastData.lon) : CAPE_LON) : CAPE_LON), WEB_AQI_TTL_MS);
+setInterval(() => {
+  const lat = lastData && hasLocationFix(lastData) ? num(lastData.lat) : CAPE_LAT;
+  const lon = lastData && hasLocationFix(lastData) ? num(lastData.lon) : CAPE_LON;
+  fetchWebAqi(lat, lon);
+}, WEB_AQI_TTL_MS);
 setInterval(fetchWebLaunches, WEB_LAUNCHES_TTL_MS);
 
 $("melody-play-btn")?.addEventListener("click", () => {
