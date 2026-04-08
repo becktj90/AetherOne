@@ -83,7 +83,6 @@
       <button class="section-btn" type="button" data-view-target="environment">Atmosphere</button>
       <button class="section-btn" type="button" data-view-target="analysis">Signals</button>
       <button class="section-btn" type="button" data-view-target="history">Trends</button>
-      <button class="section-btn" type="button" data-view-target="system">Hardware</button>
       <button class="section-btn" type="button" data-view-target="labs">Experiments</button>
     </nav>
   </div>
@@ -123,7 +122,7 @@
           <span class="badge subtle" id="hero-primary">Clean Air</span>
         </div>
         <h2 id="hero-summary">Waiting for live sensor data...</h2>
-        <p id="hero-subtitle">Real-time odor intelligence from your BME688 sensor stack will appear here.</p>
+        <p id="hero-subtitle">Environmental intelligence, decoded. Live data will appear here once the sensor posts its first snapshot.</p>
         <div class="hero-tags">
           <span class="tag" id="hero-tier">Tier --</span>
           <span class="tag" id="hero-trends">IAQ -- | VOC --</span>
@@ -270,7 +269,7 @@
       </div>
     </section>
 
-    <section class="card status-strip" id="card-status" data-view="dashboard environment system">
+    <section class="card status-strip" id="card-status" data-view="dashboard environment">
       <div class="card-header">
         <span>System Status</span>
         <span class="header-pill" id="status-badge">Awaiting telemetry</span>
@@ -299,7 +298,7 @@
       </div>
     </section>
 
-    <section class="card system-card" id="card-intel" data-view="dashboard">
+    <section class="card system-card" id="card-intel" data-view="hidden" hidden>
       <div class="card-header">
         <span>Metric Guide</span>
         <span class="header-pill">Live definitions</span>
@@ -1054,7 +1053,7 @@
       <div class="source-caption" id="source-weather">Source: device weather snapshot · Open-Meteo forecast · OpenStreetMap map · RainViewer radar</div>
     </section>
 
-    <section class="card" id="card-classifier" data-view="analysis">
+    <section class="card" id="card-classifier" data-view="hidden" hidden>
       <div class="card-header">
         <span>Model Channels</span>
         <span class="header-pill" id="matrix-badge">Confidence map</span>
@@ -1251,7 +1250,7 @@ loop():
       </ul>
     </section>
 
-    <section class="card system-card" id="card-theme" data-view="system">
+    <section class="card system-card" id="card-theme" data-view="labs">
       <div class="card-header">
         <span>Theme Studio</span>
         <span class="header-pill" id="theme-badge">Obsidian Lab</span>
@@ -1287,7 +1286,7 @@ loop():
       <div class="theme-status" id="theme-status">Current portal theme: Obsidian Lab.</div>
     </section>
 
-    <section class="card system-card" id="card-controls" data-view="system">
+    <section class="card system-card" id="card-controls" data-view="labs">
       <div class="card-header">
         <span>Control Guide</span>
       </div>

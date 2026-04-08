@@ -8,6 +8,8 @@ import { getLatest } from "../lib/store.js";
 
 const OPEN_METEO_BASE = "https://api.open-meteo.com/v1/forecast";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
+const CAPE_DEFAULT_LAT = 28.4889;
+const CAPE_DEFAULT_LON = -80.5776;
 
 function num(value, fallback = 0) {
   const parsed = Number(value);
@@ -98,11 +100,12 @@ function extractOutputText(responseJson) {
 }
 
 async function fetchForecast(snapshot) {
-  if (!hasLocationFix(snapshot)) return [];
+  const useLat = hasLocationFix(snapshot) ? num(snapshot.lat) : CAPE_DEFAULT_LAT;
+  const useLon = hasLocationFix(snapshot) ? num(snapshot.lon) : CAPE_DEFAULT_LON;
 
   const params = new URLSearchParams({
-    latitude: num(snapshot.lat).toFixed(4),
-    longitude: num(snapshot.lon).toFixed(4),
+    latitude: useLat.toFixed(4),
+    longitude: useLon.toFixed(4),
     timezone: "auto",
     forecast_days: "3",
     temperature_unit: "fahrenheit",
@@ -202,9 +205,9 @@ export default async function handler(req, res) {
     }
 
     return res.status(200).json({
-      city: snapshot.city || "",
-      lat: hasLocationFix(snapshot) ? num(snapshot.lat) : null,
-      lon: hasLocationFix(snapshot) ? num(snapshot.lon) : null,
+      city: snapshot.city || (hasLocationFix(snapshot) ? "" : "Cape Canaveral, FL"),
+      lat: hasLocationFix(snapshot) ? num(snapshot.lat) : CAPE_DEFAULT_LAT,
+      lon: hasLocationFix(snapshot) ? num(snapshot.lon) : CAPE_DEFAULT_LON,
       briefing,
       mode,
       summary: conditionSummary(forecast),

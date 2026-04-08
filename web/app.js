@@ -78,7 +78,7 @@ const HEATMAP_DAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
 const HEATMAP_DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 const POLL_MS = 10000;
-const STALE_MS = 180000;
+const STALE_MS = 300000;
 const SNIFF_EVENT_STALE_MS = 180000;
 const WEATHER_BRIEFING_TTL_MS = 30 * 60 * 1000;
 const DADABASE_TTL_MS = 15 * 60 * 1000;
@@ -181,10 +181,6 @@ const VIEW_META = {
     title: "Trends",
     subtitle: "Trend patterns, event history, and time-based room changes.",
   },
-  system: {
-    title: "Hardware",
-    subtitle: "Hardware status, signal path, controls, and system confidence notes.",
-  },
   labs: {
     title: "Experiments",
     subtitle: "Experimental features and test interfaces kept separate from primary views.",
@@ -195,7 +191,6 @@ const VIEW_SECTIONS = {
   dashboard: [
     { id: "card-hero", label: "Snapshot" },
     { id: "card-status", label: "Status" },
-    { id: "card-intel", label: "Metrics" },
     { id: "card-office", label: "Vitality" },
     { id: "card-space", label: "Launches" },
     { id: "card-history", label: "History" },
@@ -211,26 +206,18 @@ const VIEW_SECTIONS = {
     { id: "card-odor", label: "Classification" },
     { id: "card-breath", label: "Breath" },
     { id: "card-fart", label: "Air Index" },
-    { id: "card-classifier", label: "Channels" },
     { id: "card-bro", label: "Readout" },
   ],
   history: [
     { id: "card-chart", label: "Rhythm" },
     { id: "card-events", label: "Events" },
   ],
-  system: [
-    { id: "card-status", label: "Status" },
-    { id: "card-device", label: "Hardware" },
-    { id: "card-method", label: "Pipeline" },
-    { id: "card-confidence", label: "Confidence" },
-    { id: "card-usecases", label: "Use Cases" },
-    { id: "card-theme", label: "Theme" },
-    { id: "card-controls", label: "Controls" },
-  ],
   labs: [
     { id: "card-dadabase", label: "Dadabase" },
     { id: "card-melody", label: "Melodies" },
     { id: "card-paranormal", label: "Paranormal" },
+    { id: "card-theme", label: "Theme" },
+    { id: "card-controls", label: "Controls" },
   ],
 };
 
@@ -279,6 +266,18 @@ let rainViewerState = {
 let manualRefreshPending = false;
 let remoteCommandPending = false;
 let viewSubmenuOpen = false;
+let webAqiState = {
+  fetchedAt: 0,
+  aqi: 0,
+  level: "",
+  pending: null,
+};
+let webLaunchState = {
+  fetchedAt: 0,
+  launches: [],
+  launchesYtd: 0,
+  pending: null,
+};
 
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("/sw.js").catch(() => {});
@@ -3314,7 +3313,7 @@ function renderHero(d) {
   $("hero-calibration").textContent = calibration.short;
   $("hero-primary").textContent = currentPrimary(d);
   $("hero-summary").textContent = heroSummaryText(d);
-  $("hero-subtitle").textContent = "Real-time environmental intelligence from a BME688-based sensor stack.";
+  $("hero-subtitle").textContent = "Environmental intelligence, decoded.";
   $("hero-tier").textContent = `${smellTierLabel(num(d.tier))} · Tier ${num(d.tier)}/5`;
   $("hero-trends").textContent = `IAQ ${d.iaqTrend || "steady"} | VOC ${d.vocTrend || "steady"}`;
   $("hero-brief-title").textContent = `${briefLead} · ${Math.round(score)}/100 room index`;
@@ -3425,12 +3424,18 @@ function renderOfficeCard(d) {
   $("office-co2").textContent = `${Math.round(co2)} ppm`;
   $("office-iaq").textContent = `${Math.round(iaq)}`;
   $("office-humidity").textContent = `${humidity.toFixed(0)}%`;
+  const tempEl = $("office-temp");
+  if (tempEl) tempEl.textContent = `${num(d.tempF).toFixed(1)}F`;
+  const roomLoadEl = $("office-room-load");
+  if (roomLoadEl) roomLoadEl.textContent = `${Math.round(num(d.airScore))}/100`;
   $("office-context").textContent = `${windowCall(d)} Humidity is ${humidity.toFixed(0)}%, so the room is tracking as ${vtrLabel.toLowerCase()}.`;
 
   const attention = officeAttentionState(d);
   const comfort = officeComfortState(d);
   const collab = officeCollaborationState(d);
   const odor = officeOdorState(d);
+  const fatigue = officeFatigueProfile(d);
+  const persistence = officePersistenceProfile(d);
   $("office-attention-title").textContent = attention.title;
   $("office-attention-note").textContent = attention.note;
   $("office-comfort-title").textContent = comfort.title;
@@ -3439,7 +3444,15 @@ function renderOfficeCard(d) {
   $("office-collab-note").textContent = collab.note;
   $("office-odor-title").textContent = odor.title;
   $("office-odor-note").textContent = odor.note;
-  $("office-briefing").textContent = officeBriefing(d);
+  const fatigueTitleEl = $("office-fatigue-title");
+  const fatigueNoteEl = $("office-fatigue-note");
+  if (fatigueTitleEl) fatigueTitleEl.textContent = fatigue.title;
+  if (fatigueNoteEl) fatigueNoteEl.textContent = fatigue.note;
+  const persistenceTitleEl = $("office-persistence-title");
+  const persistenceNoteEl = $("office-persistence-note");
+  if (persistenceTitleEl) persistenceTitleEl.textContent = persistence.title;
+  if (persistenceNoteEl) persistenceNoteEl.textContent = persistence.note;
+  $("office-briefing").textContent = officeBriefingText(d, comfort, attention, fatigue, collab, persistence);
 
   const officeTone = vtrLevel >= 2 ? "danger" : cfiPercent < 60 || vtrLevel === 1 ? "warn" : "good";
   const officeBadgeText = vtrLevel >= 2
@@ -4430,6 +4443,22 @@ function render(data) {
   const merged = mergeSnapshotWithSniff(data);
   lastData = merged;
 
+  // Augment with web-fetched AQI when device has not provided it
+  if (!(num(merged.outdoorAqi, 0) > 0) && webAqiState.aqi > 0) {
+    merged.outdoorAqi = webAqiState.aqi;
+    merged.outdoorLevel = webAqiState.level;
+  }
+  // Augment with web-fetched launches when device has not provided them
+  if (!(Array.isArray(merged.launches) && merged.launches.length) && webLaunchState.launches.length) {
+    merged.launches = webLaunchState.launches;
+  }
+
+  // Kick off background web fetches for AQI and launches if needed
+  const lat = hasLocationFix(merged) ? num(merged.lat) : CAPE_LAT;
+  const lon = hasLocationFix(merged) ? num(merged.lon) : CAPE_LON;
+  fetchWebAqi(lat, lon);
+  fetchWebLaunches();
+
   const age = Date.now() - num(merged.receivedAt, 0);
   const isLive = age < STALE_MS;
   $("conn-dot").className = `dot ${isLive ? "online" : "stale"}`;
@@ -4500,6 +4529,73 @@ function applySniffEvent(event) {
   }
 }
 
+const CAPE_LAT = 28.4889;
+const CAPE_LON = -80.5776;
+const WEB_AQI_TTL_MS = 30 * 60 * 1000;
+const WEB_LAUNCHES_TTL_MS = 30 * 60 * 1000;
+
+function aqiToLevel(aqi) {
+  if (aqi <= 50) return "Good";
+  if (aqi <= 100) return "Moderate";
+  if (aqi <= 150) return "Unhealthy for Sensitive Groups";
+  if (aqi <= 200) return "Unhealthy";
+  if (aqi <= 300) return "Very Unhealthy";
+  return "Hazardous";
+}
+
+async function fetchWebAqi(lat, lon) {
+  const aqiLat = Number.isFinite(num(lat, NaN)) ? num(lat) : CAPE_LAT;
+  const aqiLon = Number.isFinite(num(lon, NaN)) ? num(lon) : CAPE_LON;
+  const now = Date.now();
+  if (webAqiState.pending) return;
+  if (webAqiState.fetchedAt && now - webAqiState.fetchedAt < WEB_AQI_TTL_MS) return;
+
+  webAqiState.pending = (async () => {
+    try {
+      const url = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${aqiLat.toFixed(4)}&longitude=${aqiLon.toFixed(4)}&current=us_aqi`;
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) throw new Error(`aqi ${res.status}`);
+      const json = await res.json();
+      const aqi = num(json?.current?.us_aqi, NaN);
+      if (Number.isFinite(aqi) && aqi >= 0) {
+        webAqiState.aqi = Math.round(aqi);
+        webAqiState.level = aqiToLevel(webAqiState.aqi);
+        webAqiState.fetchedAt = now;
+        if (lastData) render(lastData);
+      }
+    } catch (_) {}
+    finally { webAqiState.pending = null; }
+  })();
+}
+
+async function fetchWebLaunches() {
+  const now = Date.now();
+  if (webLaunchState.pending) return;
+  if (webLaunchState.fetchedAt && now - webLaunchState.fetchedAt < WEB_LAUNCHES_TTL_MS) return;
+
+  webLaunchState.pending = (async () => {
+    try {
+      const url = "https://ll.thespacedevs.com/2.2.0/launch/upcoming/?location__ids=27&limit=5&format=json";
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) throw new Error(`launches ${res.status}`);
+      const json = await res.json();
+      const results = Array.isArray(json?.results) ? json.results : [];
+      webLaunchState.launches = results.map((launch) => ({
+        name: launch.name || launch.mission?.name || "Unknown mission",
+        time: launch.net || launch.window_start || "TBD",
+        status: launch.status?.name || launch.status?.abbrev || "--",
+        provider: launch.launch_service_provider?.name || "Unknown",
+        pad: launch.pad?.name || "Cape pad TBD",
+        missionType: launch.mission?.type || "Mission",
+      }));
+      webLaunchState.launchesYtd = 0;
+      webLaunchState.fetchedAt = now;
+      if (lastData) render(lastData);
+    } catch (_) {}
+    finally { webLaunchState.pending = null; }
+  })();
+}
+
 async function fetchLatest() {
   try {
     const res = await fetch("/api/latest", { cache: "no-store" });
@@ -4532,6 +4628,12 @@ async function manualRefreshDashboard() {
     ]);
     fetchHistory();
     fetchSniffHistory();
+    webAqiState.fetchedAt = 0;
+    webLaunchState.fetchedAt = 0;
+    const aLat = lastData && hasLocationFix(lastData) ? num(lastData.lat) : CAPE_LAT;
+    const aLon = lastData && hasLocationFix(lastData) ? num(lastData.lon) : CAPE_LON;
+    fetchWebAqi(aLat, aLon);
+    fetchWebLaunches();
     if (lastData) {
       weatherBriefingState.fetchedAt = 0;
       weatherBriefingState.key = "";
@@ -6695,12 +6797,16 @@ loadMelodyBank()
   })
   .catch(() => {});
 startSniffStream();
+fetchWebAqi(CAPE_LAT, CAPE_LON);
+fetchWebLaunches();
 setInterval(fetchLatest, POLL_MS);
 setInterval(fetchHistory, POLL_MS * 8);
 setInterval(fetchSniffHistory, POLL_MS * 4);
 setInterval(tickAge, 1000);
 setInterval(() => ensureDadabase(false), DADABASE_TTL_MS);
 setInterval(() => renderDadabase(), 60000);
+setInterval(() => fetchWebAqi(lastData ? (hasLocationFix(lastData) ? num(lastData.lat) : CAPE_LAT) : CAPE_LAT, lastData ? (hasLocationFix(lastData) ? num(lastData.lon) : CAPE_LON) : CAPE_LON), WEB_AQI_TTL_MS);
+setInterval(fetchWebLaunches, WEB_LAUNCHES_TTL_MS);
 
 $("melody-play-btn")?.addEventListener("click", () => {
   playMelodyFromSnapshot();
